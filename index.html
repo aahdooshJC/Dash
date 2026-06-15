@@ -549,6 +549,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-
 @media (max-width: 768px) {
   html,body{overflow:auto;}
   .shell{flex-direction:column;height:auto;min-height:100vh;}
+  .view{display:none!important;}
+  .view.active{display:flex!important;}
   .sidebar{width:100%;flex-direction:row;height:50px;padding:0 10px;gap:2px;border-right:none;border-bottom:1px solid var(--border);overflow-x:auto;justify-content:flex-start;position:sticky;top:0;z-index:20;}
   .sb-logo{margin-bottom:0;margin-right:6px;flex-shrink:0;width:28px;height:28px;}
   .sb-divider{width:1px;height:22px;margin:0 2px;}
@@ -1475,8 +1477,7 @@ function _showQuote(){
   },600);
 }
 // Set first quote immediately
-(()=>{const el=document.getElementById('topbar-greeting');if(el){el.textContent=_QUOTES[_qIdx];el.style.opacity='1';}})();
-setInterval(_showQuote,8000);
+(()=>{const el=document.getElementById('topbar-greeting');if(el){el.style.display='none';}})();
 
 // ── HELPERS ──
 function dlLabel(dl,time){
@@ -1663,6 +1664,9 @@ function nav(view,el){
   document.getElementById('view-'+view).classList.add('active');
   if(el)el.classList.add('active');
   currentView=view;
+  // Scroll to top on mobile
+  window.scrollTo({top:0,behavior:'smooth'});
+  document.querySelector('.scroll-col')?.scrollTo({top:0,behavior:'smooth'});
   if(view==='calendar')renderCal(calYear,calMonth,'cal-dows','cal-days','cal-title',true);
   if(view==='tasks'){
     // Default to kanban tab
@@ -2574,11 +2578,12 @@ function cleanupSaveFoodBtn(){const btn=document.getElementById('save-to-lib-btn
 // ── WEEKLY REPORT ──
 // ── CIRCULAR TRACKER FOR WEEKLY REPORT ──
 function buildReportDonut(now){
-  const cats=Object.keys(CAT_HEX);
+  const cats=['diet','exercise','sleep','water','skin','supps','chores'];
   const catPcts=cats.map(cat=>{
     let total=0,done=0;
     for(let i=6;i>=0;i--){const d=new Date(now);d.setDate(now.getDate()-i);const hd=habitData['h_'+d.toDateString()]||{};const sched=buildSched(d.getDay()).filter(b=>!b.isWater&&!b.isSleep);sched.forEach(blk=>{(blk.tasks||[]).forEach(t=>{if(t.cat===cat){total++;if(hd['task_'+blk.id+'_'+t.id])done++;}});});}
-    return{cat,pct:total?Math.round(done/total*100):0,color:CAT_HEX[cat]||'#ccc',hasData:total>0};
+    const label=cat.charAt(0).toUpperCase()+cat.slice(1);
+    return{cat:label,pct:total?Math.round(done/total*100):0,color:CAT_C[cat]||'#ccc',hasData:total>0};
   });
   // Show all categories that exist in habit schedule; show grey for 0%
   const displayCats=catPcts.filter(c=>c.hasData);
