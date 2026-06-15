@@ -589,6 +589,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-
   .dot-row{display:none;}
   /* Habits card full width */
   #dash-habit-blocks-0{max-height:none;}
+  #hab-sections-root{display:flex;flex-direction:column;width:100%;}
+  .hab-drag-sec{width:100%;}
 }
 </style>
 </head>
@@ -1902,13 +1904,14 @@ function renderHabitsView(){
   sched.forEach((blk,bi)=>{
     const bH=parseT(blk.time),nH=bi<sched.length-1?parseT(sched[bi+1].time):25;
     const isCur=bi===curBlkIdx,isPast=isToday&&bH!==null&&curH>=(nH||25)&&!isCur;
+    if(blk.isSleep)return; // sleep tracker removed
     const el=document.createElement('div');el.className='tblock e-'+blk.en+(isCur?' is-now':'');
     if(isPast&&!isCur&&!blk.isWater&&!blk.isSleep)el.classList.add('coll');
     const dots=blk.cats.map(c=>'<span style="width:6px;height:6px;border-radius:50%;background:'+CAT_C[c]+';display:inline-block;margin-right:2px"></span>').join('');
     el.innerHTML='<div class="bhd" onclick="this.closest(\'.tblock\').classList.toggle(\'coll\')"><span class="btime">'+blk.time+'</span><span class="btitle">'+blk.title+'</span><span style="display:flex;align-items:center;gap:2px;flex-shrink:0">'+dots+'</span><span class="bpct" id="pct_'+blk.id+'"></span><span class="bchev">▾</span></div><div class="bbd" id="bd_'+blk.id+'"></div>';
     const bd=el.querySelector('#bd_'+blk.id);
     if(blk.isWater)renderWater(bd,blk);
-    else if(blk.isSleep){el.style.display='none';} // sleep tracker hidden
+    else if(blk.isSleep){} // sleep tracker removed (skipped above)
     else{(blk.tasks||[]).forEach(t=>bd.appendChild(mkHabTask(t,blk.id)));updPct(blk.id,blk.tasks||[]);}
     if(isCur){const nl=document.createElement('div');nl.style='display:flex;align-items:center;gap:8px;padding:6px 12px;background:rgba(116,185,255,0.08);border-bottom:1px solid var(--border);font-size:10px;color:var(--blue);font-weight:700;';nl.innerHTML='<div style="width:9px;height:9px;border-radius:50%;background:var(--blue);flex-shrink:0;box-shadow:0 0 0 0 rgba(116,185,255,0.5);animation:ripple-blue 2s infinite"></div> YOU ARE HERE';bd.prepend(nl);}
     root.appendChild(el);
