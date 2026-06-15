@@ -664,36 +664,6 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-
       <!-- DASHBOARD -->
       <div class="view active" id="view-dashboard">
 
-        <!-- MOBILE ONLY: Today's Tasks + Daily Habits pinned to top -->
-        <div class="mobile-top-cards" style="display:none">
-          <!-- Today's Tasks (mobile) -->
-          <div class="card" style="display:flex;flex-direction:column;">
-            <div class="card-hd">
-              <div class="card-title">Today's Tasks</div>
-              <div class="card-action" onclick="nav('tasks',document.querySelector('.sb-item[onclick*=tasks]'))">All →</div>
-            </div>
-            <div style="display:flex;gap:6px;margin-bottom:10px">
-              <input id="dash-quick-task-input-m" class="fi" placeholder="Add a task for today…" style="flex:1;padding:5px 9px;font-size:11px;" onkeydown="if(event.key==='Enter')dashQuickAddTaskMobile()"/>
-              <button class="btn btn-accent btn-sm" onclick="dashQuickAddTaskMobile()" style="padding:5px 10px;flex-shrink:0">+</button>
-            </div>
-            <div id="today-tasks-main-mobile"></div>
-            <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--border)">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-                <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.07em">Top 3 Goals Today</div>
-              </div>
-              <div id="dash-daily-goals-list-mobile"></div>
-              <div style="font-size:10px;color:var(--text-dim);cursor:pointer;padding:3px 0" onclick="dashAddDailyGoalMobile()">＋ Add goal</div>
-            </div>
-          </div>
-          <!-- Daily Habits (mobile) -->
-          <div class="card habit-preview">
-            <div class="card-hd">
-              <div class="card-title">Daily Habits</div>
-              <div class="card-action" onclick="nav('habits',document.querySelector('.sb-item[onclick*=habits]'))">Full view →</div>
-            </div>
-            <div id="dash-habit-blocks-0-mobile"></div>
-          </div>
-        </div>
         <!-- ROW 1: Overall Info + Progress by Category + Today's Tasks -->
         <div class="dash-section" draggable="true" data-sec="0">
           <div class="dash-drag-handle" title="Drag to reorder">⠿</div>
@@ -1750,13 +1720,23 @@ function renderUpcoming(id){
 function renderTodayTasksDash(el){
   if(!el)return;
   const today=todayKey();
-  const todayTasks=tasks.filter(t=>(t.dl===today||t.must)&&t.status!=='Done');
+  const todayTasks=tasks.filter(t=>(t.dl===today||t.must));
   el.innerHTML=todayTasks.length?todayTasks.map(t=>`
-    <div class="upcoming-item" onclick="openTaskEdit('${t.id}')">
-      <div style="width:14px;height:14px;color:${CAT_HEX[t.cat]||'#ccc'};flex-shrink:0">${CAT_SVG[t.cat]||''}</div>
-      <div style="flex:1;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.title}</div>
-      ${t.must?'<span style="font-size:9px;background:rgba(255,107,107,0.15);color:var(--red);padding:1px 5px;border-radius:4px;font-weight:700">Must</span>':''}
+    <div class="upcoming-item" style="opacity:${t.status==='Done'?'0.4':'1'}">
+      <div onclick="dashTickTask('${t.id}')" style="width:16px;height:16px;border-radius:4px;border:1.5px solid ${t.status==='Done'?'var(--green)':'var(--border2)'};background:${t.status==='Done'?'var(--green)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;transition:all 0.15s">
+        ${t.status==='Done'?'<svg viewBox="0 0 24 24" style="width:9px;height:9px;stroke:#fff;fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round"><polyline points="20 6 9 17 4 12"/></svg>':''}
+      </div>
+      <div style="width:13px;height:13px;color:${CAT_HEX[t.cat]||'#ccc'};flex-shrink:0">${CAT_SVG[t.cat]||''}</div>
+      <div onclick="openTaskEdit('${t.id}')" style="flex:1;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;${t.status==='Done'?'text-decoration:line-through;':''}">${t.title}</div>
+      ${t.must&&t.status!=='Done'?'<span style="font-size:9px;background:rgba(255,107,107,0.15);color:var(--red);padding:1px 5px;border-radius:4px;font-weight:700">Must</span>':''}
     </div>`).join(''):'<div class="empty" style="font-size:11px;padding:4px 0">All done for today! 🎉</div>';
+}
+function dashTickTask(id){
+  const t=tasks.find(t=>t.id===id);
+  if(!t)return;
+  t.status=t.status==='Done'?'Todo':'Done';
+  save();
+  render();
 }
 function renderMust(){
   const musts=tasks.filter(t=>t.must);
@@ -2903,8 +2883,7 @@ function dashAddDailyGoal(){if(dashDailyGoals.length>=3)return;dashDailyGoals.pu
 const isMobile=()=>window.innerWidth<=768;
 function applyMobileLayout(){
   const m=isMobile();
-  const mobileTop=document.querySelector('.mobile-top-cards');
-  if(mobileTop)mobileTop.style.display=m?'flex':'none';
+  // mobile-top-cards removed
   // On mobile, hide right-panel (handled by CSS) and show mobile-top-cards
 }
 window.addEventListener('resize',applyMobileLayout);
@@ -2942,11 +2921,7 @@ function render(){
   renderDashFoodNotes();renderDashDailyGoals();
   // Mobile mirrors
   applyMobileLayout();
-  renderTodayTasksDash(document.getElementById('today-tasks-main-mobile'));
-  renderDashDailyGoalsMobile();
-  // Mobile habits mirror
-  const mhEl=document.getElementById('dash-habit-blocks-0-mobile');
-  if(mhEl){const src=document.getElementById('dash-habit-blocks-0');if(src)mhEl.innerHTML=src.innerHTML;}
+  // mobile mirrors removed - using single unified layout
   if(currentView==='tasks'){const kv=document.getElementById('tvt-kanban');const lv=document.getElementById('tvt-list');if(kv&&kv.classList.contains('active'))renderTasksKanban();else renderTasksList();}
   if(currentView==='projects')renderProjectsView();
   if(currentView==='habits')renderHabitsView();
