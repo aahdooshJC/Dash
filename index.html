@@ -1895,8 +1895,8 @@ function renderHabitsView(){
   document.getElementById('hab-date-str').textContent=n.toLocaleDateString('en-SG',{day:'numeric',month:'long',year:'numeric'});
   document.getElementById('hab-pct-badge').textContent=getDayPct(vDay)+'% complete';
   renderHabDailyExtras();
-  renderHabFood();
-  renderHabNotes();
+  try{renderHabFood();}catch(e){console.error('renderHabFood:',e);}
+  try{renderHabNotes();}catch(e){console.error('renderHabNotes:',e);}
   const root=document.getElementById('sched-root');root.innerHTML='';
   const rawSched=buildSched(vDay),sched=applyHabitEdits(rawSched);
   const curH=new Date().getHours()+new Date().getMinutes()/60,isToday=vDay===TODAY_H;
@@ -2466,27 +2466,51 @@ async function analyzePhotoWithAI(base64Image){
   const fatEl=document.getElementById('fm-fat');
   const aiStatus=document.getElementById('fm-ai-status');
   if(nameEl)nameEl.placeholder='Analyzing photo…';
-  if(aiStatus){aiStatus.style.display='flex';aiStatus.innerHTML='<span style="color:var(--orange)">🤖 Gemini is analyzing your meal…</span>';}
+  if(aiStatus){aiStatus.style.display='flex';aiStatus.innerHTML='<span style="color:var(--orange)">🤖 Analyzing your meal…</span>';}
+
+  let GEMINI_KEY=localStorage.getItem('cc5_gemini_key')||'';
+  if(!GEMINI_KEY){
+    const entered=prompt('Paste your Gemini API key:\n\nGet one free at: aistudio.google.com/apikey');
+    if(!entered){if(aiStatus)aiStatus.innerHTML='<span style="color:var(--text-dim)">Cancelled.</span>';return;}
+    GEMINI_KEY=entered.trim();
+    localStorage.setItem('cc5_gemini_key',GEMINI_KEY);
+  }
+
   try{
     const base64Data=base64Image.split(',')[1];
     const mediaType=base64Image.match(/data:([^;]+);/)?.[1]||'image/jpeg';
-    // Gemini 1.5 Flash — free, fast, CORS-friendly from browser
-    const GEMINI_KEY=localStorage.getItem('cc5_gemini_key')||'';
-    if(!GEMINI_KEY){if(aiStatus)aiStatus.innerHTML='<span style="color:var(--red)">⚠ No Gemini API key set. Tap the ⚙ key icon in the food modal to add one.</span>';return;}
-    const res=await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
-      {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          contents:[{parts:[
-            {inline_data:{mime_type:mediaType,data:base64Data}},
-            {text:'Identify the food in this image and estimate nutritional macros for a typical single serving. Respond ONLY with a valid JSON object, no markdown, no explanation. Format: {"name":"meal name","cal":number,"prot":number,"carbs":number,"fat":number}'}
-          ]}]
-        })
+
+    // Try Gemini API Studio endpoint (AIzaSy keys)
+    // OR Vertex AI endpoint (AQ. keys) — auto-detect by key format
+    let res,url,body;
+    if(GEMINI_KEY.startsWith('AIzaSy')){
+      // Standard Gemini API
+      url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+      body=JSON.stringify({contents:[{parts:[
+        {inline_data:{mime_type:mediaType,data:base64Data}},
+        {text:'Identify the food and estimate macros for a single serving. Respond ONLY with JSON: {"name":"meal name","cal":number,"prot":number,"carbs":number,"fat":number}'}
+      ]}]});
+      res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body});
+    } else {
+      // Vertex AI / AQ. key format — use OAuth2 bearer token
+      url='https://us-central1-aiplatform.googleapis.com/v1/projects/300560071464/locations/us-central1/publishers/google/models/gemini-1.5-flash:generateContent';
+      body=JSON.stringify({contents:[{parts:[
+        {inline_data:{mime_type:mediaType,data:base64Data}},
+        {text:'Identify the food and estimate macros for a single serving. Respond ONLY with JSON: {"name":"meal name","cal":number,"prot":number,"carbs":number,"fat":number}'}
+      ]}]});
+      res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+GEMINI_KEY},body});
+    }
+
+    if(!res.ok){
+      const e=await res.text();
+      // Key might be wrong type — clear it and ask again next time
+      if(res.status===401||res.status===403){
+        localStorage.removeItem('cc5_gemini_key');
+        throw new Error('Invalid API key — it has been cleared. Please try again with a valid key.');
       }
-    );
-    if(!res.ok){const e=await res.text();throw new Error('Gemini error: '+res.status+' '+e);}
+      throw new Error('API error '+res.status);
+    }
+
     const data=await res.json();
     const text=(data.candidates?.[0]?.content?.parts?.[0]?.text||'').trim().replace(/```json|```/g,'').trim();
     const parsed=JSON.parse(text);
@@ -2495,26 +2519,23 @@ async function analyzePhotoWithAI(base64Image){
     if(protEl)protEl.value=parsed.prot||'';
     if(carbsEl)carbsEl.value=parsed.carbs||'';
     if(fatEl)fatEl.value=parsed.fat||'';
-    if(aiStatus)aiStatus.innerHTML='<span style="color:var(--green)">✓ Macros estimated by Gemini — review & adjust if needed</span>';
+    if(aiStatus)aiStatus.innerHTML='<span style="color:var(--green)">✓ Macros estimated by AI — review & adjust if needed</span>';
     if(nameEl)nameEl.placeholder='e.g. Chicken rice, yogurt bowl…';
   }catch(err){
-    console.error('Gemini analysis failed:',err);
-    if(aiStatus)aiStatus.innerHTML='<span style="color:var(--red)">⚠ '+err.message.slice(0,60)+'</span>';
+    console.error('AI analysis failed:',err);
+    if(aiStatus)aiStatus.innerHTML='<span style="color:var(--red)">⚠ '+err.message.slice(0,80)+'</span>';
     if(nameEl)nameEl.placeholder='e.g. Chicken rice, yogurt bowl…';
   }
 }
 
-
 // ── GEMINI KEY SETUP ──
 function setupGeminiKey(){
   const current=localStorage.getItem('cc5_gemini_key')||'';
-  const key=prompt('Enter your Gemini API key:
-
-Get a free key at: aistudio.google.com/app/apikey',current);
+  const key=prompt('Enter your Gemini API key. Get free key at: aistudio.google.com/apikey',current);
   if(key===null)return;
   if(key.trim()){
     localStorage.setItem('cc5_gemini_key',key.trim());
-    alert('✓ Gemini API key saved! You can now use photo analysis.');
+    alert('Gemini API key saved! You can now use photo analysis.');
   } else {
     localStorage.removeItem('cc5_gemini_key');
     alert('Gemini key removed.');
@@ -2937,20 +2958,18 @@ function dashAddDailyGoalMobile(){if(dashDailyGoals.length>=3)return;dashDailyGo
 
 // ── MASTER RENDER ──
 function render(){
-  renderStats();renderDots();renderWeekChart();renderWeeklyGoals();
-  renderGoals();renderMonthlyProgress();renderCatTracker();
-  if(dashEisenhowerMode)renderEisenhowerMatrix('eisenhower-matrix');else renderKanban();
-  renderTodayTasksDash(document.getElementById('today-tasks-main'));renderMust();renderProjStrip();
-  renderCal(miniCalYear,miniCalMonth,'mini-dows','mini-days','mini-cal-month',false);
-  renderDashHabits();updatePomoSel();renderPomoDots();renderPomoDisplay();
-  renderDashFoodNotes();renderDashDailyGoals();
-  // Mobile mirrors
-  applyMobileLayout();
-  // mobile mirrors removed - using single unified layout
-  if(currentView==='tasks'){const kv=document.getElementById('tvt-kanban');const lv=document.getElementById('tvt-list');if(kv&&kv.classList.contains('active'))renderTasksKanban();else renderTasksList();}
-  if(currentView==='projects')renderProjectsView();
-  if(currentView==='habits')renderHabitsView();
-  if(currentView==='notes')renderNotes();
+  try{renderStats();renderDots();renderWeekChart();renderWeeklyGoals();}catch(e){console.error('render stats:',e);}
+  try{renderGoals();renderMonthlyProgress();renderCatTracker();}catch(e){console.error('render goals:',e);}
+  try{if(dashEisenhowerMode)renderEisenhowerMatrix('eisenhower-matrix');else renderKanban();}catch(e){console.error('render matrix:',e);}
+  try{renderTodayTasksDash(document.getElementById('today-tasks-main'));renderMust();renderProjStrip();}catch(e){console.error('render tasks:',e);}
+  try{renderCal(miniCalYear,miniCalMonth,'mini-dows','mini-days','mini-cal-month',false);}catch(e){console.error('render cal:',e);}
+  try{renderDashHabits();updatePomoSel();renderPomoDots();renderPomoDisplay();}catch(e){console.error('render habits:',e);}
+  try{renderDashFoodNotes();renderDashDailyGoals();}catch(e){console.error('render food:',e);}
+  try{applyMobileLayout();}catch(e){}
+  if(currentView==='tasks'){try{const kv=document.getElementById('tvt-kanban');if(kv&&kv.classList.contains('active'))renderTasksKanban();else renderTasksList();}catch(e){console.error('render tasks view:',e);}}
+  if(currentView==='projects')try{renderProjectsView();}catch(e){console.error('render projects:',e);}
+  if(currentView==='habits')try{renderHabitsView();}catch(e){console.error('render habits view:',e);}
+  if(currentView==='notes')try{renderNotes();}catch(e){console.error('render notes:',e);}
 }
 
 (async()=>{await load();render();checkMorningPrompt();checkWeeklyBackup();})();
