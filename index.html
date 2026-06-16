@@ -1145,7 +1145,7 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-
 const _SUPA_URL='https://jvrwcuthcgdzxwvltxyt.supabase.co';
 const _SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp2cndjdXRoY2dkenh3dmx0eHl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MDIzMTQsImV4cCI6MjA5NzA3ODMxNH0.ePUkRg-QbfzJHXE5o-wCDdUoJFFAjZR3xbKfRnxFBTE';
 const _SUPA_HEADERS={'Content-Type':'application/json','apikey':_SUPA_KEY,'Authorization':'Bearer '+_SUPA_KEY};
-const _SUPA_HEADERS_POST={..._SUPA_HEADERS,'Prefer':'resolution=merge-duplicates,return=minimal'};
+const _SUPA_HEADERS_POST={'Content-Type':'application/json','apikey':_SUPA_KEY,'Authorization':'Bearer '+_SUPA_KEY,'Prefer':'resolution=merge-duplicates,return=minimal'};
 const supabase={createClient:()=>({})};
 </script>
 
@@ -1374,7 +1374,9 @@ async function load(){
     showSyncBadge('ok');
   }catch(e){
     console.error('Supabase load failed:',e.message||e);
-    showSyncBadge('error','Check SQL setup');
+    showSyncBadge('error',(e.message||'failed').slice(0,20));
+    var sb=document.getElementById('sync-badge');
+    if(sb)sb.onclick=function(){alert('Sync error: '+e.message);};
     tasks=JSON.parse(localStorage.getItem('cc5_tasks')||'null')||JSON.parse(JSON.stringify(DEFAULT_TASKS));
     projects=JSON.parse(localStorage.getItem('cc5_projects')||'null')||JSON.parse(JSON.stringify(DEFAULT_PROJECTS));
     goals=JSON.parse(localStorage.getItem('cc5_goals')||'null')||JSON.parse(JSON.stringify(DEFAULT_GOALS));
