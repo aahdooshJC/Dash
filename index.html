@@ -541,6 +541,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-
 @media (max-width: 768px) {
   html,body{overflow:auto;}
   .shell{flex-direction:column;height:auto;min-height:100vh;}
+  .view{display:none!important;}
+  .view.active{display:flex!important;}
   .sidebar{width:100%;flex-direction:row;height:50px;padding:0 10px;gap:2px;border-right:none;border-bottom:1px solid var(--border);overflow-x:auto;justify-content:flex-start;position:sticky;top:0;z-index:20;}
   .sb-logo{margin-bottom:0;margin-right:6px;flex-shrink:0;width:28px;height:28px;}
   .sb-divider{width:1px;height:22px;margin:0 2px;}
@@ -569,11 +571,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-
   /* Hide heavy desktop-only dashboard sections on mobile */
   .dash-section[data-sec="2"],
   .dash-section[data-sec="3"]{display:none;}
-  /* Mobile dashboard: show Today's Tasks + Habits first, then Overall Info */
+  /* Mobile dashboard */
   #view-dashboard{display:flex;flex-direction:column;}
-  .mobile-top-cards{order:-1;display:flex;flex-direction:column;gap:10px;}
-  .dash-section[data-sec="0"]{order:2;}
-  .dash-section[data-sec="1"]{order:3;}
+  .mobile-top-cards{display:none!important;}
   /* Overall info card: hide dot-row and stat-pills on mobile to save space */
   .dot-row{display:none;}
   /* Habits card full width */
@@ -2231,6 +2231,7 @@ function renderHabFood(){
         <div class="wt-label" style="margin-bottom:0;display:flex;align-items:center;gap:6px">${svgFood} Food & Calories</div>
         <div style="display:flex;gap:6px">
           <button class="btn btn-sm" onclick="openFoodPhotoUpload()" style="font-size:10px;display:flex;align-items:center;gap:4px"><svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Photo</button>
+          <button class="btn btn-sm" onclick="setupGeminiKey()" style="font-size:10px">⚙ AI Key</button>
           <button class="btn btn-sm" onclick="openSavedFoodsPanel()" style="font-size:10px;display:flex;align-items:center;gap:4px"><svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Saved</button>
           <button class="btn btn-sm btn-accent" onclick="openFoodModal()" style="font-size:10px">+ Add Meal</button>
         </div>
@@ -2409,49 +2410,59 @@ function openFoodPhotoUpload(){
 }
 
 async function analyzePhotoWithAI(base64Image){
-  // Open modal with loading state
   openFoodModal(true);
-  // Show loading indicator
   const nameEl=document.getElementById('fm-name');
   const calEl=document.getElementById('fm-cal');
   const protEl=document.getElementById('fm-prot');
   const carbsEl=document.getElementById('fm-carbs');
   const fatEl=document.getElementById('fm-fat');
   const aiStatus=document.getElementById('fm-ai-status');
-  if(nameEl)nameEl.placeholder='Analyzing photo…';
-  if(aiStatus){aiStatus.style.display='flex';aiStatus.innerHTML='<span style="color:var(--orange)">🤖 AI analyzing food photo…</span>';}
+  if(nameEl)nameEl.placeholder='Analyzing photo...';
+  if(aiStatus){aiStatus.style.display='flex';aiStatus.innerHTML='<span style="color:var(--orange)">Analyzing your meal...</span>';}
+  let GEMINI_KEY=localStorage.getItem('cc5_gemini_key')||'';
+  if(!GEMINI_KEY){
+    const entered=prompt('Paste your Gemini API key. Get one free at aistudio.google.com/apikey');
+    if(!entered){if(aiStatus)aiStatus.innerHTML='<span style="color:var(--text-dim)">Cancelled.</span>';return;}
+    GEMINI_KEY=entered.trim();
+    localStorage.setItem('cc5_gemini_key',GEMINI_KEY);
+  }
   try{
-    // Extract base64 data (remove data URL prefix)
     const base64Data=base64Image.split(',')[1];
     const mediaType=base64Image.match(/data:([^;]+);/)?.[1]||'image/jpeg';
-    const response=await fetch('https://api.anthropic.com/v1/messages',{
+    const url='https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key='+GEMINI_KEY;
+    const res=await fetch(url,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-6',
-        max_tokens:400,
-        messages:[{role:'user',content:[
-          {type:'image',source:{type:'base64',media_type:mediaType,data:base64Data}},
-          {type:'text',text:'Identify the food in this image and estimate its macros. Respond ONLY with a JSON object, no markdown, no explanation. Format: {"name":"meal name","cal":number,"prot":number,"carbs":number,"fat":number}. Estimate for a typical single serving.'}
-        ]}]
-      })
+      body:JSON.stringify({contents:[{parts:[
+        {inline_data:{mime_type:mediaType,data:base64Data}},
+        {text:'Identify the food and estimate macros for a single serving. Respond ONLY with JSON no markdown: {"name":"meal name","cal":number,"prot":number,"carbs":number,"fat":number}'}
+      ]}]})
     });
-    const data=await response.json();
-    const text=(data.content||[]).map(c=>c.text||'').join('').trim().replace(/```json|```/g,'').trim();
+    if(!res.ok){const e=await res.text();localStorage.removeItem('cc5_gemini_key');throw new Error('API error '+res.status+'. Key cleared, try again.');}
+    const data=await res.json();
+    const text=(data.candidates?.[0]?.content?.parts?.[0]?.text||'').replace(/```json|```/g,'').trim();
     const parsed=JSON.parse(text);
     if(nameEl)nameEl.value=parsed.name||'';
     if(calEl)calEl.value=parsed.cal||'';
     if(protEl)protEl.value=parsed.prot||'';
     if(carbsEl)carbsEl.value=parsed.carbs||'';
     if(fatEl)fatEl.value=parsed.fat||'';
-    if(aiStatus){aiStatus.innerHTML='<span style="color:var(--green)">✓ Macros estimated by AI — review & adjust if needed</span>';}
-    if(nameEl)nameEl.placeholder='e.g. Chicken rice, yogurt bowl…';
+    if(aiStatus)aiStatus.innerHTML='<span style="color:var(--green)">Macros estimated — review and adjust if needed</span>';
+    if(nameEl)nameEl.placeholder='e.g. Chicken rice, yogurt bowl...';
   }catch(err){
     console.error('AI analysis failed:',err);
-    if(aiStatus){aiStatus.innerHTML='<span style="color:var(--text-muted)">Could not analyze photo — enter macros manually</span>';}
-    if(nameEl)nameEl.placeholder='e.g. Chicken rice, yogurt bowl…';
+    if(aiStatus)aiStatus.innerHTML='<span style="color:var(--red)">'+err.message.slice(0,80)+'</span>';
+    if(nameEl)nameEl.placeholder='e.g. Chicken rice, yogurt bowl...';
   }
 }
+function setupGeminiKey(){
+  const current=localStorage.getItem('cc5_gemini_key')||'';
+  const key=prompt('Enter Gemini API key (get free key at aistudio.google.com/apikey):',current);
+  if(key===null)return;
+  if(key.trim()){localStorage.setItem('cc5_gemini_key',key.trim());alert('Gemini key saved!');}
+  else{localStorage.removeItem('cc5_gemini_key');alert('Gemini key removed.');}
+}
+
 
 // ── SAVED FOODS ──
 function getSavedFoods(){return JSON.parse(localStorage.getItem('cc5_saved_foods')||'[]');}
@@ -2772,6 +2783,7 @@ function renderDashFoodNotes(){
         <div class="wt-label" style="margin-bottom:0;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em">${svgFood} Food & Calories</div>
         <div style="display:flex;gap:6px">
           <button class="btn btn-sm" onclick="openFoodPhotoUpload()" style="font-size:10px;display:flex;align-items:center;gap:4px"><svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Photo</button>
+          <button class="btn btn-sm" onclick="setupGeminiKey()" style="font-size:10px">⚙ AI Key</button>
           <button class="btn btn-sm" onclick="openSavedFoodsPanel()" style="font-size:10px;display:flex;align-items:center;gap:4px"><svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Saved</button>
           <button class="btn btn-sm btn-accent" onclick="openFoodModal()" style="font-size:10px">+ Add Meal</button>
         </div>
