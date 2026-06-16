@@ -1144,7 +1144,8 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);font-
 <script>
 const _SUPA_URL='https://jvrwcuthcgdzxwvltxyt.supabase.co';
 const _SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp2cndjdXRoY2dkenh3dmx0eHl0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MDIzMTQsImV4cCI6MjA5NzA3ODMxNH0.ePUkRg-QbfzJHXE5o-wCDdUoJFFAjZR3xbKfRnxFBTE';
-const _SUPA_HEADERS={'Content-Type':'application/json','apikey':_SUPA_KEY,'Authorization':'Bearer '+_SUPA_KEY,'Prefer':'resolution=merge-duplicates'};
+const _SUPA_HEADERS={'Content-Type':'application/json','apikey':_SUPA_KEY,'Authorization':'Bearer '+_SUPA_KEY};
+const _SUPA_HEADERS_POST={..._SUPA_HEADERS,'Prefer':'resolution=merge-duplicates,return=minimal'};
 const supabase={createClient:()=>({})};
 </script>
 
@@ -1296,11 +1297,11 @@ function showSyncBadge(status,msg){
   if(status==='ok')setTimeout(()=>showSyncBadge('idle'),2500);
 }
 async function sbUpsert(key,data){
-  const res=await fetch(_SUPA_URL+'/rest/v1/store',{method:'POST',headers:{..._SUPA_HEADERS,'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({id:key,data:data,updated_at:new Date().toISOString()})});
+  const res=await fetch(_SUPA_URL+'/rest/v1/store',{method:'POST',headers:_SUPA_HEADERS_POST,body:JSON.stringify({id:key,data:data,updated_at:new Date().toISOString()})});
   if(!res.ok){const t=await res.text();throw new Error(t);}
 }
 async function sbGet(key){
-  const res=await fetch(_SUPA_URL+'/rest/v1/store?id=eq.'+encodeURIComponent(key)+'&select=data',{method:'GET',headers:_SUPA_HEADERS});
+  const res=await fetch(_SUPA_URL+'/rest/v1/store?id=eq.'+encodeURIComponent(key)+'&select=data',{headers:_SUPA_HEADERS});
   if(!res.ok){const t=await res.text();throw new Error(t);}
   const arr=await res.json();
   return arr.length?arr[0].data:null;
